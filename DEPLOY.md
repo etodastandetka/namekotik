@@ -30,19 +30,30 @@ npm run build
 
 Это создаст оптимизированную версию приложения в папке `.next`
 
-## Шаг 4: Деплой на сервер
+## Шаг 4: Деплой на сервер в /var/www/namekotik
 
-### Вариант A: Использовать Vercel (рекомендуется для Next.js)
+### Быстрый деплой (рекомендуется)
 
-1. Зарегистрируйтесь на [vercel.com](https://vercel.com)
-2. Подключите ваш GitHub/GitLab репозиторий
-3. Vercel автоматически задеплоит приложение
-4. В настройках домена добавьте ваш домен `name-kotik.com`
-5. Vercel предоставит DNS записи для настройки
+Используйте готовый скрипт деплоя:
 
-### Вариант B: Деплой на свой VPS сервер
+```bash
+# На сервере
+cd /path/to/project  # где находится проект или склонируйте его
+chmod +x deploy.sh
+sudo ./deploy.sh
+```
 
-#### Установить Node.js на сервере:
+Скрипт автоматически:
+- Создаст директорию `/var/www/namekotik`
+- Склонирует проект из GitHub
+- Установит зависимости
+- Соберет проект
+- Настроит PM2
+- Настроит nginx
+
+### Ручной деплой
+
+#### 1. Установить Node.js на сервере:
 
 ```bash
 # Ubuntu/Debian
@@ -54,13 +65,20 @@ node -v
 npm -v
 ```
 
-#### Установить PM2 (менеджер процессов):
+#### 2. Установить PM2 (менеджер процессов):
 
 ```bash
 npm install -g pm2
 ```
 
-#### Загрузить проект на сервер:
+#### 3. Установить Nginx:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx
+```
+
+#### 4. Загрузить проект на сервер в /var/www/namekotik:
 
 **Вариант 1: Через архив (tar.gz)**
 
@@ -127,16 +145,18 @@ rm ../name-kotik.zip
 
 ```bash
 # На сервере
-cd /home/user
-git clone <your-repo-url> name-kotik
-cd name-kotik
+sudo mkdir -p /var/www/namekotik
+sudo chown $USER:$USER /var/www/namekotik
+cd /var/www
+git clone https://github.com/etodastandetka/namekotik.git namekotik
+cd namekotik
 ```
 
-#### На сервере:
+#### 5. Установить зависимости и собрать проект:
 
 ```bash
-# Распаковать или перейти в папку проекта
-cd /home/user/name-kotik
+# Перейти в папку проекта
+cd /var/www/namekotik
 
 # Установить зависимости
 npm install
@@ -144,27 +164,36 @@ npm install
 # Собрать проект
 npm run build
 
-# Запустить с PM2
-pm2 start npm --name "name-kotik" -- start
-pm2 save
-pm2 startup
+# Настроить права доступа
+sudo chown -R www-data:www-data /var/www/namekotik
+sudo chmod -R 755 /var/www/namekotik
 ```
 
-#### Настроить Nginx (обратный прокси):
+#### 6. Запустить приложение с PM2:
 
 ```bash
-# Установить Nginx
-sudo apt-get install nginx
-
-# Создать конфигурацию
-sudo nano /etc/nginx/sites-available/name-kotik
+cd /var/www/namekotik
+pm2 start npm --name "namekotik" -- start
+pm2 save
+pm2 startup systemd -u $USER --hp /home/$USER
 ```
 
-Содержимое файла:
+#### 7. Настроить Nginx:
+
+```bash
+# Скопировать конфигурацию из проекта
+sudo cp /var/www/namekotik/nginx/name-kotik.com.conf /etc/nginx/sites-available/name-kotik.com.conf
+
+# Или создать вручную
+sudo nano /etc/nginx/sites-available/name-kotik.com.conf
+```
+
+Содержимое файла (уже есть в `nginx/name-kotik.com.conf`):
 
 ```nginx
 server {
     listen 80;
+    listen [::]:80;
     server_name name-kotik.com www.name-kotik.com;
 
     location / {
@@ -173,19 +202,35 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }
+
+    access_log /var/log/nginx/name-kotik-access.log;
+    error_log /var/log/nginx/name-kotik-error.log;
 }
 ```
 
 ```bash
 # Активировать конфигурацию
-sudo ln -s /etc/nginx/sites-available/name-kotik /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/name-kotik.com.conf /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-#### Настроить SSL (HTTPS) с Let's Encrypt:
+#### 8. Настроить SSL (HTTPS) с Let's Encrypt:
+
+**Быстрый способ (используя скрипт):**
+
+```bash
+cd /var/www/namekotik
+chmod +x setup-ssl.sh
+sudo ./setup-ssl.sh
+```
+
+**Ручной способ:**
 
 ```bash
 # Установить Certbot
@@ -197,6 +242,8 @@ sudo certbot --nginx -d name-kotik.com -d www.name-kotik.com
 # Автоматическое обновление
 sudo certbot renew --dry-run
 ```
+
+После получения SSL сертификата certbot автоматически обновит конфигурацию nginx для работы с HTTPS.
 
 ## Шаг 5: Проверка
 
@@ -211,14 +258,24 @@ sudo certbot renew --dry-run
 pm2 status
 
 # Посмотреть логи
-pm2 logs name-kotik
+pm2 logs namekotik
 
 # Перезапустить приложение
-pm2 restart name-kotik
+pm2 restart namekotik
+
+# Обновить проект (после git pull)
+cd /var/www/namekotik
+npm install
+npm run build
+pm2 restart namekotik
 
 # Проверить Nginx
 sudo nginx -t
 sudo systemctl status nginx
+
+# Посмотреть логи nginx
+sudo tail -f /var/log/nginx/name-kotik-access.log
+sudo tail -f /var/log/nginx/name-kotik-error.log
 ```
 
 ## Troubleshooting
