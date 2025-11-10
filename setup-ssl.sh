@@ -34,6 +34,34 @@ if ! nslookup ${DOMAIN} &> /dev/null; then
     fi
 fi
 
+# Проверка конфигурации nginx
+NGINX_CONFIG="/etc/nginx/sites-available/${DOMAIN}.conf"
+NGINX_ENABLED="/etc/nginx/sites-enabled/${DOMAIN}.conf"
+
+if [ ! -f "$NGINX_CONFIG" ]; then
+    echo "⚠️  Конфигурация nginx не найдена. Создаем..."
+    if [ -f "/var/www/namekotik/nginx/${DOMAIN}.conf" ]; then
+        cp /var/www/namekotik/nginx/${DOMAIN}.conf $NGINX_CONFIG
+    else
+        echo "❌ Файл конфигурации не найден. Создайте его вручную."
+        exit 1
+    fi
+fi
+
+# Активация конфигурации если не активирована
+if [ ! -L "$NGINX_ENABLED" ]; then
+    echo "🔗 Активируем конфигурацию nginx..."
+    ln -s $NGINX_CONFIG $NGINX_ENABLED
+fi
+
+# Проверка конфигурации nginx
+echo "🔍 Проверяем конфигурацию nginx..."
+nginx -t
+
+# Перезапуск nginx
+echo "🔄 Перезапускаем nginx..."
+systemctl restart nginx
+
 # Получение SSL сертификата
 echo "📜 Получаем SSL сертификат от Let's Encrypt..."
 certbot --nginx -d ${DOMAIN} -d www.${DOMAIN} --non-interactive --agree-tos --email admin@${DOMAIN} --redirect

@@ -9,6 +9,7 @@ PROJECT_DIR="/var/www/namekotik"
 DOMAIN="name-kotik.com"
 SERVICE_NAME="namekotik"
 NGINX_CONFIG="/etc/nginx/sites-available/${DOMAIN}.conf"
+NGINX_ENABLED="/etc/nginx/sites-enabled/${DOMAIN}.conf"
 
 echo "🚀 Начинаем деплой проекта name-kotik..."
 
@@ -96,8 +97,13 @@ EOF
 fi
 
 # Активация конфигурации nginx
-if [ ! -L "/etc/nginx/sites-enabled/${DOMAIN}.conf" ]; then
-    ln -s $NGINX_CONFIG /etc/nginx/sites-enabled/
+if [ ! -L "$NGINX_ENABLED" ]; then
+    ln -s $NGINX_CONFIG $NGINX_ENABLED
+fi
+
+# Удаление дефолтной конфигурации если существует
+if [ -L "/etc/nginx/sites-enabled/default" ]; then
+    rm /etc/nginx/sites-enabled/default
 fi
 
 # Проверка конфигурации nginx
